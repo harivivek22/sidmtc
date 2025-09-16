@@ -17,7 +17,7 @@ def extract_video_id(url: str) -> str:
 
 
 def generate_homepage(output_file="home.html"):
-    """Generate a modern homepage (like MovieRulz / Instagram style)"""
+    """Generate a modern homepage"""
     html = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -86,8 +86,8 @@ def generate_homepage(output_file="home.html"):
     print(f"✅ Modern homepage generated: {output_file}")
 
 
-def generate_swipe(videos, output_file="index.html"):
-    """Generate swipe site with titles, links, and thumbnails"""
+def generate_swipe(videos, categories, output_file="index.html"):
+    """Generate swipe site with videos + categories gallery"""
     html = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -104,8 +104,6 @@ def generate_swipe(videos, output_file="index.html"):
       background: #111;
       font-family: Arial, sans-serif;
       overflow: hidden;
-      -webkit-user-select: none;
-      -webkit-touch-callout: none;
     }
     .phone {
       width: 360px;
@@ -115,7 +113,6 @@ def generate_swipe(videos, output_file="index.html"):
       overflow: hidden;
       position: relative;
       box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-      -webkit-overflow-scrolling: touch;
     }
     .card {
       position: absolute;
@@ -123,11 +120,12 @@ def generate_swipe(videos, output_file="index.html"):
       height: 100%;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: center;
       padding: 10px;
       box-sizing: border-box;
       transition: transform 0.4s ease, opacity 0.4s ease;
+      overflow-y: auto;
     }
     img {
       width: 100%;
@@ -154,9 +152,7 @@ def generate_swipe(videos, output_file="index.html"):
       display: inline-block;
     }
     .watch-now { background: #e50914; color: white; }
-    .watch-now:hover { background: #b20710; }
     .visit-now { background: #007bff; color: white; }
-    .visit-now:hover { background: #0056b3; }
     .overlay {
       position: fixed;
       top: 40%;
@@ -176,6 +172,34 @@ def generate_swipe(videos, output_file="index.html"):
     .overlay.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
     .overlay.interested { color: #00ff88; text-shadow: 0 0 20px #00ff88; }
     .overlay.not { color: #ff4444; text-shadow: 0 0 20px #ff4444; }
+
+    /* Categories page */
+    .categories {
+      width: 100%;
+    }
+    .category-block {
+      margin-bottom: 20px;
+    }
+    .category-block h3 {
+      color: #e50914;
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+    .thumb-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .thumb-grid a img {
+      width: 100%;
+      height: 100px;
+      object-fit: cover;
+      border-radius: 8px;
+      transition: transform 0.3s;
+    }
+    .thumb-grid a img:hover {
+      transform: scale(1.05);
+    }
   </style>
 </head>
 <body>
@@ -185,12 +209,34 @@ def generate_swipe(videos, output_file="index.html"):
         button_class = "watch-now" if is_youtube else "visit-now"
         button_text = "▶ Watch Now" if is_youtube else "🌐 Visit Now"
         html += f"""
-    <div class="card" style="z-index:{len(videos)-i}">
+    <div class="card" style="z-index:{len(videos)-i+1}">
       <img src="{thumb}" alt="{title}">
       <h2>{title}</h2>
       <a href="{url}" target="_blank" class="{button_class}">{button_text}</a>
     </div>
 """
+
+    # Categories tab
+    html += """
+    <div class="card" style="z-index:1">
+      <h2>Browse by Category</h2>
+      <div class="categories">
+"""
+    for category, items in categories.items():
+        html += f"""        <div class="category-block">
+          <h3>{category}</h3>
+          <div class="thumb-grid">
+"""
+        for (title, url, thumb, _) in items:
+            html += f"""            <a href="{url}" target="_blank"><img src="{thumb}" alt="{title}"></a>\n"""
+        html += """          </div>
+        </div>
+"""
+
+    html += """      </div>
+    </div>
+"""
+
     html += """
   </div>
   <div class="overlay interested" id="interestedOverlay">MARKED AS WATCHED</div>
@@ -271,32 +317,45 @@ def generate_swipe(videos, output_file="index.html"):
 """
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(html)
-    print(f"✅ Swipe site generated: {output_file}")
+    print(f"✅ Swipe site with categories generated: {output_file}")
 
 
 def main():
     videos = []
+    categories = {"🎵 Music": [], "🎬 Movies": [], "🛍 Merchandise": [], "⭐ Others": []}
+
     with open("videos.csv", "r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
         for row in reader:
             title = row["title"].strip()
             url = row["url"].strip()
             thumb = row.get("thumbnail", "").strip()
-
             video_id = extract_video_id(url)
 
-            if thumb:  # Use thumbnail from CSV
-                if not thumb.startswith("http") and not os.path.exists(thumb):
-                    print(f"⚠️ Warning: Thumbnail '{thumb}' not found for '{title}'")
-                videos.append((title, url, thumb, bool(video_id)))
-            elif video_id:  # Auto YouTube thumbnail
-                thumb = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
-                videos.append((title, url, thumb, True))
-            else:  # Fallback
-                thumb = "https://via.placeholder.com/360x200.png?text=Website+Preview"
-                videos.append((title, url, thumb, False))
+            # Special case: The OG Merchandise → custom thumbnail
+            if title.lower() == "the og merchandise":
+                thumb = "https://theogwear.com/cdn/shop/files/logo.png"
 
-    generate_swipe(videos)
+            if not thumb and video_id:
+                thumb = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+            if not thumb:
+                thumb = "https://via.placeholder.com/360x200.png?text=Website+Preview"
+
+            is_youtube = bool(video_id)
+            video_entry = (title, url, thumb, is_youtube)
+            videos.append(video_entry)
+
+            # Categorize
+            if title.startswith("MV"):
+                categories["🎵 Music"].append(video_entry)
+            elif title.startswith("M"):
+                categories["🎬 Movies"].append(video_entry)
+            elif "merch" in title.lower():
+                categories["🛍 Merchandise"].append(video_entry)
+            else:
+                categories["⭐ Others"].append(video_entry)
+
+    generate_swipe(videos, categories)
     generate_homepage()
 
 
